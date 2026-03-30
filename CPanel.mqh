@@ -2,7 +2,8 @@
 //|  CPanel.mqh — Grafik Bilgi Paneli Modülü                        |
 //|  Koyu tema, sağ üst köşe, 7 bilgi, IsNewBar güncellemesi        |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CPANEL_MQH
+#define CPANEL_MQH
 
 //====================================================================
 //  RENK PALETİ (Koyu tema — C'0x1E,0x1E,0x2E' baz)
@@ -385,3 +386,4 @@ public:
       Guncelle(sembol, botAktif, gunlukLimitModu);
    }
 };
+#endif // CPANEL_MQH

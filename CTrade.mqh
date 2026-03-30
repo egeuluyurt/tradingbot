@@ -2,7 +2,8 @@
 //|  CTrade.mqh — Emir Açma / Kapama Modülü                         |
 //|  Görev: Alış/Satış emirlerini açar, kapatır, yönetir             |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CTRADE_MQH
+#define CTRADE_MQH
 
 #include <Trade\Trade.mqh>   // MT5 yerleşik trade kütüphanesi
 
@@ -176,3 +177,4 @@ public:
       return 0;
    }
 };
+#endif // CTRADE_MQH

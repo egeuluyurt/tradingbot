@@ -3,7 +3,8 @@
 //|  4 adımda bağlantı, hesap, ayar kontrolü ve hazır bildirimi     |
 //|  GlobalVariables ile "kurulum tamamlandı" bilgisini saklar       |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CWIZARD_MQH
+#define CWIZARD_MQH
 
 //====================================================================
 //  SABİTLER
@@ -698,3 +699,4 @@ public:
    int    MevcutAdim()    const { return m_mevcutAdim;  }
    bool   TekrarGosterme()const { return m_tekrarGosterme; }
 };
+#endif // CWIZARD_MQH

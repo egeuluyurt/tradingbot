@@ -4,7 +4,8 @@
 //|  Katman 2 DİKKAT → Comment + SendNotification + ses             |
 //|  Katman 3 ACİL   → Alert + SendNotification + ses(×3)           |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CNOTIFY_MQH
+#define CNOTIFY_MQH
 
 //====================================================================
 //  KATMAN SABİTLERİ
@@ -466,3 +467,4 @@ public:
       return TELEFON_GUNLUK_LIMIT - m_telefonSayaci;
    }
 };
+#endif // CNOTIFY_MQH

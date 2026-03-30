@@ -329,7 +329,7 @@ void OnTick()
       kernel.Tick();
 }
 
-void OnChartEvent(const int id, const long lp, const double dp, const string sp)
+void OnChartEvent(const int id, const long &lp, const double &dp, const string &sp)
 {
    if(kernel != NULL)
       kernel.ChartEvent(id, lp, dp, sp);

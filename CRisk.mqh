@@ -3,7 +3,8 @@
 //|  Görev: Dinamik lot hesaplama, SL/TP yerleştirme,               |
 //|         güvenlik kuralları ve kademeli kâr alma                 |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CRISK_MQH
+#define CRISK_MQH
 
 //====================================================================
 //  CRisk
@@ -401,3 +402,4 @@ public:
       m_riskYuzdesi = MathMin(yuzde, 2.0); // %2 tavanı koru
    }
 };
+#endif // CRISK_MQH

@@ -3,7 +3,8 @@
 //|  Görev: PRZ tabanlı AL/SAT/YOK sinyali üretir                   |
 //|  Strateji: Fibonacci + RSI + MACD + Harmonik + Tetikleyici Mum  |
 //+------------------------------------------------------------------+
-#pragma once
+#ifndef CSIGNAL_MQH
+#define CSIGNAL_MQH
 
 //--- Sinyal değerleri
 enum ENUM_SIGNAL
@@ -609,3 +610,4 @@ public:
    string          Sembol() const { return m_sembol; }
    ENUM_TIMEFRAMES Zaman()  const { return m_zaman;  }
 };
+#endif // CSIGNAL_MQH
