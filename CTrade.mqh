@@ -6,10 +6,13 @@
 
 #include <Trade\Trade.mqh>   // MT5 yerleşik trade kütüphanesi
 
+// MT5 yerleşik CTrade sınıfına takma ad — isim çakışmasını önler
+typedef CTrade CTradeLib;
+
 class CTrade
 {
 private:
-   ::CTrade  m_trade;        // MT5 yerleşik trade nesnesi
+   CTradeLib m_trade;        // MT5 yerleşik trade nesnesi (takma ad ile)
    string    m_sembol;       // İşlem sembolü
    ulong     m_sihirliSayi;  // EA'ya özgü Magic Number (çakışma önler)
    int       m_kaymaTolerans;// Slippage — fiyat kayması toleransı (point)
@@ -133,6 +136,24 @@ public:
             return true;
       }
       return false;
+   }
+
+   //------------------------------------------------------------------
+   // AcikPozisyonKari: Bu EA'nın tüm açık pozisyonlarının toplam kârı
+   //------------------------------------------------------------------
+   double AcikPozisyonKari()
+   {
+      double toplam = 0;
+      for(int i = 0; i < PositionsTotal(); i++)
+      {
+         ulong ticket = PositionGetTicket(i);
+         if(ticket == 0) continue;
+
+         if(PositionGetString(POSITION_SYMBOL) == m_sembol &&
+            PositionGetInteger(POSITION_MAGIC) == (long)m_sihirliSayi)
+            toplam += PositionGetDouble(POSITION_PROFIT);
+      }
+      return toplam;
    }
 
    //------------------------------------------------------------------

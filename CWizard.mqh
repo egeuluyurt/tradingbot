@@ -316,7 +316,7 @@ private:
 
       bool demoMu   = (AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO);
       double bakiye = AccountInfoDouble(ACCOUNT_BALANCE);
-      long kaldırac = AccountInfoInteger(ACCOUNT_LEVERAGE);
+      long kaldirac = AccountInfoInteger(ACCOUNT_LEVERAGE);
       string para   = AccountInfoString(ACCOUNT_CURRENCY);
 
       // Hesap türü
@@ -345,9 +345,9 @@ private:
 
       // Kaldıraç
       IcMetin("h3", cx, cy,
-              "Kaldıraç: 1:" + IntegerToString(kaldırac),
-              (kaldırac > 400 ? WIZ_TURUNCU : WIZ_METIN));
-      if(kaldırac > 400)
+              "Kaldıraç: 1:" + IntegerToString(kaldirac),
+              (kaldirac > 400 ? WIZ_TURUNCU : WIZ_METIN));
+      if(kaldirac > 400)
       {
          cy += sa;
          IcMetin("h3c", cx + 10, cy,

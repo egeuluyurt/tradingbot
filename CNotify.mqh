@@ -33,14 +33,13 @@ string HataMetni(int kod)
 {
    switch(kod)
    {
-      case 134: return "Yeterli bakiye yok";
-      case 4756:
-      case 133: return "Otomatik işlem kapalı — MT5 araç çubuğunu kontrol edin";
-      case 130: return "Stop seviyesi çok yakın — broker minimumunu kontrol edin";
-      case 135: return "Fiyat değişti — yeniden deneyin";
-      case 136: return "Fiyat alınamadı — bağlantıyı kontrol edin";
-      case 138: return "Requote — fiyat değişti";
-      case 146: return "İşlem sistemi meşgul — kısa süre bekleyin";
+      case 134:  return "Yeterli bakiye yok";
+      case 133:  return "Otomatik işlem kapalı — MT5 araç çubuğunu kontrol edin";
+      case 130:  return "Stop seviyesi çok yakın — broker minimumunu kontrol edin";
+      case 135:  return "Fiyat değişti — yeniden deneyin";
+      case 136:  return "Fiyat alınamadı — bağlantıyı kontrol edin";
+      case 138:  return "Requote — fiyat değişti";
+      case 146:  return "İşlem sistemi meşgul — kısa süre bekleyin";
       case 4109: return "Otomatik işleme izin verilmiyor";
       case 4756: return "İşlem gönderim hatası";
       default:  return "Hata kodu " + IntegerToString(kod);

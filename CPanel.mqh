@@ -47,8 +47,6 @@ private:
    // Yeni mum kontrolü
    datetime m_sonBarZamani;
 
-   // Onay iletişim kutusu için bekleyen eylem
-   int      m_bekleyenEylem;  // 0=yok 1=durdur 2=kapat
 
    //------------------------------------------------------------------
    // Nesne adı üreticileri
@@ -216,7 +214,7 @@ public:
    //------------------------------------------------------------------
    CPanel(string onEk = "TBot", int x = 5, int y = 30)
       : m_onEk(onEk), m_x(x), m_y(y),
-        m_olayYazici(0), m_sonBarZamani(0), m_bekleyenEylem(0)
+        m_olayYazici(0), m_sonBarZamani(0)
    {
       m_grafik = ChartID();
       for(int i = 0; i < PANEL_OLAY_SAYISI; i++)
@@ -302,7 +300,6 @@ public:
             pzTxt, pzRenk, 14, "Segoe UI Bold");
 
       // --- 3. RİSK ÇUBUĞU (Y≈148) ---
-      double maxBalance = 0;
       // Basit drawdown: bakiyeye göre equity düşüşü yüzdesi
       double drawdown = (balance > 0 && equity < balance)
                         ? ((balance - equity) / balance) * 100.0

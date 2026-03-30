@@ -60,12 +60,12 @@ private:
    }
 
    //------------------------------------------------------------------
-   // SemboldenParaBirimleriCıkar:
+   // SemboldenParaBirimleriCikar:
    // "EURUSD" → ["EUR", "USD"]
    // "XAUUSD" → ["XAU", "USD"]  (altın gibi özel semboller dahil)
    // Sembol 6 karakterden kısaysa tüm sembolü tek birim olarak ekle.
    //------------------------------------------------------------------
-   void SemboldenParaBirimleriCıkar(string sembol)
+   void SemboldenParaBirimleriCikar(string sembol)
    {
       // Uzantıları temizle (.pro .m .r gibi)
       string temiz = sembol;
@@ -178,7 +178,7 @@ public:
    //------------------------------------------------------------------
    bool Init(string sembol)
    {
-      SemboldenParaBirimleriCıkar(sembol);
+      SemboldenParaBirimleriCikar(sembol);
       OnbellekGuncelle();   // Başlangıçta bir kez doldur
 
       Print("CNewsFilter: MT5 Ekonomik Takvim filtresi başlatıldı — Sembol: ", sembol,
