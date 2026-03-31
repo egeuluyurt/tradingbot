@@ -456,9 +456,14 @@ private:
 
    //------------------------------------------------------------------
    // YASAKLI ZAMAN 2: Haber saati (MT5 Ekonomik Takvim önbelleği üzerinden)
+   // Strategy Tester'da veya takvim verisi yoksa sadece uyarı ver, engelleme.
    //------------------------------------------------------------------
    bool HaberZamaniMi()
    {
+      // Takvim verisi hiç dolmadıysa (Tester ortamı veya bağlantı yoksa) geç
+      if(m_haberFilt.OnbellekSayisi() < 0)
+         return false;   // Uyarı Init'te zaten basıldı, burada engelleme
+
       return m_haberFilt.HaberZamaniMi(TimeCurrent(), 30);
    }
 
@@ -479,14 +484,16 @@ private:
 
    //------------------------------------------------------------------
    // H4 TREND ONAYI: H4 RSI yönü H1 sinyaliyle uyuşuyor mu?
+   // "Öneri" seviyesi — false döndürse de işlemi engellemez, sadece loglar.
+   // Zorunlu filtre olarak kullanılmaz; çağıran kod uyarı amaçlı okur.
    //------------------------------------------------------------------
    bool H4TrendUyumuMu(bool alisSenaryosu)
    {
       double rsiH4 = IndikatorDeger(m_rsiH4Handle, 0, 1);
-      if(rsiH4 == EMPTY_VALUE) return true; // veri yoksa engelleme
+      if(rsiH4 == EMPTY_VALUE) return true;
 
-      // Alış için H4 RSI < 60 (aşırı alım değil), satış için > 40
-      return (alisSenaryosu ? rsiH4 < 60.0 : rsiH4 > 40.0);
+      // Alış için H4 RSI < 65, satış için > 35 (geniş bant)
+      return (alisSenaryosu ? rsiH4 < 65.0 : rsiH4 > 35.0);
    }
 
 public:
@@ -542,16 +549,17 @@ public:
 
    //------------------------------------------------------------------
    // SinyalAl: Ana sinyal fonksiyonu
+   // PRZ eşiği: 3/5 koşul (gevşetildi — eskiden 5/5 idi)
+   // H4 trend: zorunlu değil, "öneri" — engellemiyor, sadece logluyor
    // Döndürür: SIGNAL_AL, SIGNAL_SAT veya SIGNAL_YOK
    //------------------------------------------------------------------
    ENUM_SIGNAL SinyalAl()
    {
       // === YASAKLI ZAMAN KONTROLÜ ===
+      // Gece yarısı mumu: sadece yeni bar açılışında kontrol et (her tick değil)
       if(GeceyarisiBariMi())
-      {
-         Print("PRZ: Gece yarısı mumu — işlem engellendi.");
-         return SIGNAL_YOK;
-      }
+         return SIGNAL_YOK;   // Sık oluşmaz, log basma
+
       if(HaberZamaniMi())
       {
          Print("PRZ: Haber saati — işlem engellendi.");
@@ -559,46 +567,71 @@ public:
       }
       if(AsiriSertMumMu())
       {
-         Print("PRZ: Aşırı sert/hacimli mum — limit emir engellendi.");
+         Print("PRZ: Asiri sert mum — engellendi.");
          return SIGNAL_YOK;
       }
 
       double fiyat = iClose(m_sembol, m_zaman, 1);
 
-      // === ALış SENARYOSU ===
+      // === ALIŞI SENARYOSU ===
       int alisPuan = PRZPuanHesapla(fiyat, true);
-      if(alisPuan >= 5)
+      bool alisH4  = H4TrendUyumuMu(true);
+
+      if(alisPuan >= 3)   // Eşik: 5 → 3
       {
-         if(H4TrendUyumuMu(true))
+         ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(true);
+
+         // Detaylı log: neden geçti veya neden reddedildi
+         Print("PRZ ALIS degerlendirme | Fiyat: ", DoubleToString(fiyat, _Digits),
+               " | Puan: ", alisPuan, "/5",
+               " | H4Trend: ", (alisH4 ? "OK" : "ZAYIF"),
+               " | Tetik: ", EnumToString(tetik));
+
+         if(tetik != TETIK_YOK)
          {
-            ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(true);
-            if(tetik != TETIK_YOK)
-            {
-               Print("PRZ AL Sinyali | Puan: ", alisPuan,
-                     " | Tetikleyici: ", EnumToString(tetik));
-               return SIGNAL_AL;
-            }
-            else
-               Print("PRZ: Alış PRZ onaylı (", alisPuan, ") ama tetikleyici mum yok.");
+            if(!alisH4)
+               Print("PRZ ALIS: H4 trend zayif ama devam ediliyor (oneri seviyesi).");
+            Print(">>> PRZ AL Sinyali | Puan: ", alisPuan,
+                  " | Tetikleyici: ", EnumToString(tetik));
+            return SIGNAL_AL;
          }
+         else
+            Print("PRZ ALIS RED: Tetikleyici mum yok (puan=", alisPuan, ").");
+      }
+      else if(alisPuan > 0)
+      {
+         Print("PRZ ALIS yetersiz puan: ", alisPuan, "/5 (min 3 gerekli)",
+               " | Fiyat: ", DoubleToString(fiyat, _Digits));
       }
 
       // === SATIŞ SENARYOSU ===
       int satisPuan = PRZPuanHesapla(fiyat, false);
-      if(satisPuan >= 5)
+      bool satisH4  = H4TrendUyumuMu(false);
+
+      if(satisPuan >= 3)   // Eşik: 5 → 3
       {
-         if(H4TrendUyumuMu(false))
+         ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(false);
+
+         Print("PRZ SATIS degerlendirme | Fiyat: ", DoubleToString(fiyat, _Digits),
+               " | Puan: ", satisPuan, "/5",
+               " | H4Trend: ", (satisH4 ? "OK" : "ZAYIF"),
+               " | Tetik: ", EnumToString(tetik));
+
+         if(tetik != TETIK_YOK)
          {
-            ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(false);
-            if(tetik != TETIK_YOK)
-            {
-               Print("PRZ SAT Sinyali | Puan: ", satisPuan,
-                     " | Tetikleyici: ", EnumToString(tetik));
-               return SIGNAL_SAT;
-            }
-            else
-               Print("PRZ: Satış PRZ onaylı (", satisPuan, ") ama tetikleyici mum yok.");
+            if(!satisH4)
+               Print("PRZ SATIS: H4 trend zayif ama devam ediliyor (oneri seviyesi).");
+            Print(">>> PRZ SAT Sinyali | Puan: ", satisPuan,
+                  " | Tetikleyici: ", EnumToString(tetik));
+            return SIGNAL_SAT;
          }
+         else
+            Print("PRZ SATIS RED: Tetikleyici mum yok (puan=", satisPuan, ").");
+      }
+      else if(satisPuan > 0)
+      {
+         Print("PRZ SATIS yetersiz puan: ", satisPuan, "/5 (min 3 gerekli)",
+               " | Fiyat: ", DoubleToString(fiyat, _Digits));
       }
 
       return SIGNAL_YOK;

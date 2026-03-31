@@ -156,14 +156,23 @@ public:
 
       // Paçal + günlük limit kontrolü
       double acikKar = m_trade.AcikPozisyonKari();
-      if(!m_risk.IslemYapilabilirMi(acikKar)) return;
+      if(!m_risk.IslemYapilabilirMi(acikKar))
+      {
+         Print("KERNEL: Risk filtresi islem engelledi | AcikKar=",
+               DoubleToString(acikKar, 2));
+         return;
+      }
 
       // Sinyal al
       ENUM_SIGNAL sinyal = m_sinyal.SinyalAl();
       if(sinyal == SIGNAL_YOK) return;
 
       // Zaten açık pozisyon varsa yeni işlem açma
-      if(m_trade.AcikPozisyonVar()) return;
+      if(m_trade.AcikPozisyonVar())
+      {
+         Print("KERNEL: Sinyal var (", (int)sinyal, ") ama zaten acik pozisyon mevcut.");
+         return;
+      }
 
       // SL fraktal bazlı
       bool alis = (sinyal == SIGNAL_AL);
@@ -174,7 +183,7 @@ public:
                      ? SymbolInfoDouble(m_sembol, SYMBOL_ASK)
                      : SymbolInfoDouble(m_sembol, SYMBOL_BID);
 
-      // Tahmini CD aralığı (son 20 bar aralığının yarısı — gerçek harmonik D'de güncellenmeli)
+      // Tahmini CD aralığı (son 20 bar aralığının yarısı)
       double yuksek = iHigh(m_sembol, PERIOD_H1,
                             iHighest(m_sembol, PERIOD_H1, MODE_HIGH, 20, 1));
       double asagi  = iLow (m_sembol, PERIOD_H1,
@@ -185,12 +194,29 @@ public:
       double tp1 = m_risk.TP1Hesapla(giris, alis, cdAralik);
       double tp2 = m_risk.TP2Hesapla(giris, alis, cdAralik);
 
+      Print("KERNEL: Emir hazirlanıyor | Yon=", (alis ? "AL" : "SAT"),
+            " | Giris=", DoubleToString(giris, _Digits),
+            " | SL=", DoubleToString(sl, _Digits),
+            " | TP1=", DoubleToString(tp1, _Digits),
+            " | cdAralik=", DoubleToString(cdAralik, _Digits));
+
       // R/Ö kontrolü (en az 1:1)
-      if(!m_risk.RiskOdulUygunMu(giris, sl, tp1)) return;
+      if(!m_risk.RiskOdulUygunMu(giris, sl, tp1))
+      {
+         Print("KERNEL: R/O orani yetersiz — islem acilmadi",
+               " | SL mesafe=", DoubleToString(MathAbs(giris - sl), _Digits),
+               " | TP mesafe=", DoubleToString(MathAbs(giris - tp1), _Digits));
+         return;
+      }
 
       // Lot hesapla
       double lot = m_risk.LotHesapla(giris, sl);
-      if(lot <= 0) return;
+      if(lot <= 0)
+      {
+         Print("KERNEL: Lot hesabi sifir/negatif — islem acilmadi | SL=",
+               DoubleToString(sl, _Digits));
+         return;
+      }
 
       // Emir aç (CTrade TP1 ile açılır; TP2 ve trailing CTrade'de yönetilir)
       bool basarili = false;
