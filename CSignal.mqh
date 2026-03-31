@@ -291,9 +291,10 @@ private:
       }
       else
       {
-         // Satis: swingYuksek'ten asagi olcumlenen %61.8 - %78.6 retracement
-         double alt = swingDusuk  + aralik * 0.618;
-         double ust = swingDusuk  + aralik * 0.786;
+         // Satis: swingYuksek'ten asagi retracement — fiyat zirveye gelip geri donuyor
+         // Yani swingYuksek - aralik*0.786 (derin) ile swingYuksek - aralik*0.618 (sığ) arasi
+         double alt = swingYuksek - aralik * 0.786;
+         double ust = swingYuksek - aralik * 0.618;
          return (kapanis >= alt - tolerans && kapanis <= ust + tolerans);
       }
    }
@@ -384,13 +385,19 @@ public:
       bool fibo   = FiboBolgesindeMi(kapanis, alis);
       bool rsi    = RSIAsiriMi  (alis);
 
+      // Crosslama (cakisma) mantigi:
+      // S/R Flip VE Fibo ayni fiyat seviyesinde kesismek ZORUNDA + RSI onay
+      // Her ikisi de true olmadan PRZ teyit edilmis sayilmaz.
+      bool przOnay = (srFlip && fibo && rsi);
+
       Print("PRZ kontrol | Yon=", (alis ? "AL" : "SAT"),
             " | SRFlip=", srFlip,
             " | Fibo=",   fibo,
             " | RSI=",    rsi,
-            " | Fiyat=",  DoubleToString(kapanis, _Digits));
+            " | Fiyat=",  DoubleToString(kapanis, _Digits),
+            " | PRZ=",    przOnay);
 
-      return ((srFlip || fibo) && rsi);
+      return przOnay;
    }
 
    //------------------------------------------------------------------
