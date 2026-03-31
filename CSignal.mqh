@@ -1,7 +1,6 @@
 //+------------------------------------------------------------------+
 //|  CSignal.mqh — Sinyal Üretim Modülü                             |
-//|  Görev: PRZ tabanlı AL/SAT/YOK sinyali üretir                   |
-//|  Strateji: Fibonacci + RSI + MACD + Harmonik + Tetikleyici Mum  |
+//|  Strateji: PRZ (S/R Flip + Fibo) + RSI + MACD Div + Tetik Mum  |
 //+------------------------------------------------------------------+
 #ifndef CSIGNAL_MQH
 #define CSIGNAL_MQH
@@ -9,9 +8,9 @@
 //--- Sinyal değerleri
 enum ENUM_SIGNAL
 {
-   SIGNAL_YOK  = 0,   // Bekle, işlem yapma
-   SIGNAL_AL   = 1,   // Alış sinyali
-   SIGNAL_SAT  = -1   // Satış sinyali
+   SIGNAL_YOK  =  0,   // Bekle, işlem yapma
+   SIGNAL_AL   =  1,   // Alış sinyali
+   SIGNAL_SAT  = -1    // Satış sinyali
 };
 
 //--- Tetikleyici mum türleri
@@ -25,25 +24,16 @@ enum ENUM_TETIKLEYICI
 
 //====================================================================
 //  CNewsFilter — MT5 Ekonomik Takvim API tabanlı haber filtresi
-//  Sadece CALENDAR_IMPORTANCE_HIGH olayları dikkate alır.
-//  Performans: Haber listesi günlük önbelleğe alınır; her tick'te
-//  takvim veritabanı sorgulanmaz, yalnızca önbellek kontrol edilir.
 //====================================================================
 class CNewsFilter
 {
 private:
-   //--- Önbellek: günün yüksek önemli haberlerinin zamanları
-   datetime m_onbellekHaberler[];   // Önbelleğe alınan haber zamanları
-   int      m_onbellekSayisi;       // Önbellekteki haber sayısı
-   datetime m_onbellekGunu;         // Önbelleğin ait olduğu günün başlangıcı
-
-   //--- Sembolle ilişkili para birimleri (dinamik filtreleme için)
-   string   m_paraBirimleri[];      // Örn: ["EUR", "USD"]
+   datetime m_onbellekHaberler[];
+   int      m_onbellekSayisi;
+   datetime m_onbellekGunu;
+   string   m_paraBirimleri[];
    int      m_paraBirimiSayisi;
 
-   //------------------------------------------------------------------
-   // YARDIMCI: Bugünün başlangıç zamanını döndür (00:00:00)
-   //------------------------------------------------------------------
    datetime BugunBaslangici()
    {
       MqlDateTime md;
@@ -52,23 +42,10 @@ private:
       return StructToTime(md);
    }
 
-   //------------------------------------------------------------------
-   // YARDIMCI: Yarının başlangıç zamanını döndür
-   //------------------------------------------------------------------
-   datetime YarinBaslangici()
-   {
-      return BugunBaslangici() + 86400;
-   }
+   datetime YarinBaslangici() { return BugunBaslangici() + 86400; }
 
-   //------------------------------------------------------------------
-   // SemboldenParaBirimleriCikar:
-   // "EURUSD" → ["EUR", "USD"]
-   // "XAUUSD" → ["XAU", "USD"]  (altın gibi özel semboller dahil)
-   // Sembol 6 karakterden kısaysa tüm sembolü tek birim olarak ekle.
-   //------------------------------------------------------------------
    void SemboldenParaBirimleriCikar(string sembol)
    {
-      // Uzantıları temizle (.pro .m .r gibi)
       string temiz = sembol;
       string uzantilar[] = {".pro", ".m", ".r", ".c", ".i", ".PRO", ".M"};
       for(int i = 0; i < ArraySize(uzantilar); i++)
@@ -76,167 +53,103 @@ private:
          int pos = StringFind(temiz, uzantilar[i]);
          if(pos > 0) { temiz = StringSubstr(temiz, 0, pos); break; }
       }
-
       m_paraBirimiSayisi = 0;
       ArrayResize(m_paraBirimleri, 0);
-
       int uzunluk = StringLen(temiz);
       if(uzunluk >= 6)
       {
-         // Standart forex çifti: ilk 3 + son 3 karakter
-         string baz   = StringSubstr(temiz, 0, 3);
-         string quote = StringSubstr(temiz, 3, 3);
          ArrayResize(m_paraBirimleri, 2);
-         m_paraBirimleri[0]  = baz;
-         m_paraBirimleri[1]  = quote;
-         m_paraBirimiSayisi  = 2;
+         m_paraBirimleri[0] = StringSubstr(temiz, 0, 3);
+         m_paraBirimleri[1] = StringSubstr(temiz, 3, 3);
+         m_paraBirimiSayisi = 2;
       }
       else if(uzunluk > 0)
       {
          ArrayResize(m_paraBirimleri, 1);
-         m_paraBirimleri[0]  = temiz;
-         m_paraBirimiSayisi  = 1;
+         m_paraBirimleri[0] = temiz;
+         m_paraBirimiSayisi = 1;
       }
    }
 
-   //------------------------------------------------------------------
-   // HaberParaBirimiEslesiyor:
-   // Takvim olayının para birimi, sembolümüzle ilişkili mi?
-   // paraBirimiSayisi == 0 ise tüm haberleri kabul et (güvenli taraf).
-   //------------------------------------------------------------------
-   bool HaberParaBirimiEslesiyor(string haberParaBirimi)
+   bool HaberParaBirimiEslesiyor(string pb)
    {
       if(m_paraBirimiSayisi == 0) return true;
       for(int i = 0; i < m_paraBirimiSayisi; i++)
-         if(m_paraBirimleri[i] == haberParaBirimi) return true;
+         if(m_paraBirimleri[i] == pb) return true;
       return false;
    }
 
-   //------------------------------------------------------------------
-   // OnbellekGuncelle:
-   // Yeni güne geçildiğinde (veya ilk çalıştırmada) bugünün
-   // CALENDAR_IMPORTANCE_HIGH haberlerini takvimden çekip depolar.
-   // Her tick'te değil, yalnızca gün değişiminde çağrılır.
-   //------------------------------------------------------------------
    void OnbellekGuncelle()
    {
       datetime bugun = BugunBaslangici();
-
-      // Aynı gün için önbellek zaten doluysa tekrar çekme
       if(m_onbellekGunu == bugun && m_onbellekSayisi >= 0) return;
 
       m_onbellekGunu   = bugun;
       m_onbellekSayisi = 0;
       ArrayResize(m_onbellekHaberler, 0);
 
-      // MT5 Ekonomik Takvim API: bugün + yarın arası
       MqlCalendarValue haberDizisi[];
-      datetime baslangic = bugun;
-      datetime bitis     = YarinBaslangici();
-
-      int adet = CalendarValueHistory(haberDizisi, baslangic, bitis);
-      if(adet <= 0)
-      {
-         Print("CNewsFilter: Bugün için takvim verisi alınamadı (adet=", adet, ").");
-         return;
-      }
+      int adet = CalendarValueHistory(haberDizisi, bugun, YarinBaslangici());
+      if(adet <= 0) { Print("CNewsFilter: Takvim verisi alinamadi."); return; }
 
       for(int i = 0; i < adet; i++)
       {
-         // Olayın detayını çek
          MqlCalendarEvent olay;
          if(!CalendarEventById(haberDizisi[i].event_id, olay)) continue;
-
-         // Yalnızca yüksek önem derecesi
          if(olay.importance != CALENDAR_IMPORTANCE_HIGH) continue;
-
-         // Para birimi filtresi (ülke bilgisinden para birimi alınamıyorsa kabul et)
          MqlCalendarCountry ulke;
          if(CalendarCountryById(olay.country_id, ulke))
-         {
             if(!HaberParaBirimiEslesiyor(ulke.currency)) continue;
-         }
-
-         // Önbelleğe ekle
          ArrayResize(m_onbellekHaberler, m_onbellekSayisi + 1);
-         m_onbellekHaberler[m_onbellekSayisi] = haberDizisi[i].time;
-         m_onbellekSayisi++;
+         m_onbellekHaberler[m_onbellekSayisi++] = haberDizisi[i].time;
       }
-
-      Print("CNewsFilter: ", m_onbellekSayisi,
-            " yüksek önemli haber önbelleğe alındı — ",
-            TimeToString(bugun, TIME_DATE));
+      Print("CNewsFilter: ", m_onbellekSayisi, " yuksek onemli haber onbelleklendi.");
    }
 
 public:
-   CNewsFilter()
-      : m_onbellekSayisi(-1),   // -1: hiç güncellenmedi
-        m_onbellekGunu(0),
-        m_paraBirimiSayisi(0) {}
+   CNewsFilter() : m_onbellekSayisi(-1), m_onbellekGunu(0), m_paraBirimiSayisi(0) {}
 
-   //------------------------------------------------------------------
-   // Init: Sembolü al, para birimlerini çıkar, ilk önbelleği doldur
-   //------------------------------------------------------------------
    bool Init(string sembol)
    {
       SemboldenParaBirimleriCikar(sembol);
-      OnbellekGuncelle();   // Başlangıçta bir kez doldur
-
-      Print("CNewsFilter: MT5 Ekonomik Takvim filtresi başlatıldı — Sembol: ", sembol,
-            " | Para birimleri: ",
-            (m_paraBirimiSayisi > 0 ? m_paraBirimleri[0] : "?"),
-            (m_paraBirimiSayisi > 1 ? "/" + m_paraBirimleri[1] : ""));
+      OnbellekGuncelle();
+      Print("CNewsFilter basladi — ", sembol);
       return true;
    }
 
-   //------------------------------------------------------------------
-   // HaberZamaniMi: Şu an haber penceresinde miyiz?
-   // pencereDakika: haberin kaç dakika öncesi/sonrası korunacak
-   //
-   // Performans notu: Bu fonksiyon her tick'te çağrılır.
-   // Takvim veritabanı sorgusu yapılmaz — yalnızca önbellek taranır.
-   // Gün değişiminde önbellek otomatik yenilenir (O(1) kontrol).
-   //------------------------------------------------------------------
    bool HaberZamaniMi(datetime zaman, int pencereDakika = 30)
    {
-      // Gün değişimi kontrolü — pahalı değil, sadece datetime karşılaştırması
-      datetime bugun = BugunBaslangici();
-      if(m_onbellekGunu != bugun) OnbellekGuncelle();
-
-      int pencerekn = pencereDakika * 60;
+      if(m_onbellekGunu != BugunBaslangici()) OnbellekGuncelle();
+      int sn = pencereDakika * 60;
       for(int i = 0; i < m_onbellekSayisi; i++)
-      {
-         if(MathAbs((long)(zaman - m_onbellekHaberler[i])) <= pencerekn)
-            return true;
-      }
+         if(MathAbs((long)(zaman - m_onbellekHaberler[i])) <= sn) return true;
       return false;
    }
 
-   //------------------------------------------------------------------
-   // Erişiciler
-   //------------------------------------------------------------------
-   int    OnbellekSayisi()    const { return m_onbellekSayisi;    }
-   int    ParaBirimiSayisi()  const { return m_paraBirimiSayisi;  }
+   int OnbellekSayisi()   const { return m_onbellekSayisi;   }
+   int ParaBirimiSayisi() const { return m_paraBirimiSayisi; }
 };
 
 //====================================================================
-//  CSignal — Ana Sinyal Sınıfı
+//  CSignal — Ana Sinyal Sinifi
+//  Algoritma: PRZ onay + MACD uyumsuzluk + Tetikleyici mum
 //====================================================================
 class CSignal
 {
 private:
-   //--- İndikatör handle'ları
-   int   m_rsiHandle;    // H1 RSI
-   int   m_macdHandle;   // H1 MACD
-   int   m_rsiH4Handle;  // H4 RSI (trend onayı)
+   //--- Indiktor handle'lari
+   int   m_rsiHandle;      // H1 RSI(14)
+   int   m_macdHandle;     // H1 MACD(12,26,9) — histogram tampon 2
+   int   m_fractalsHandle; // H1 iFractals — yukaridaki(0) ve asagidaki(1) tamponlar
+   int   m_rsiH4Handle;    // H4 RSI(14) — trend onerisi
 
    string          m_sembol;
-   ENUM_TIMEFRAMES m_zaman;      // H1 ana zaman dilimi
-   CNewsFilter     m_haberFilt;  // MT5 Ekonomik Takvim filtresi (değer tipi, pointer değil)
-   datetime        m_sonBarZamani; // Son değerlendirilen H1 bar zamanı (yeni bar koruması)
+   ENUM_TIMEFRAMES m_zaman;
+   CNewsFilter     m_haberFilt;
+   datetime        m_sonBarZamani;
 
    //------------------------------------------------------------------
-   // YARDIMCI: Tek tampon değeri oku
+   // YARDIMCI: Tek tampon degeri oku (as-series)
    //------------------------------------------------------------------
    double IndikatorDeger(int handle, int tampon, int bar)
    {
@@ -247,254 +160,163 @@ private:
    }
 
    //------------------------------------------------------------------
-   // PRZ KOŞUL 1-2: Fibonacci Retracement/Extension kontrolü
-   // Skalp aralığı: son 50 H1 barın yüksek/düşük aralığına göre
-   // Gerçek uygulama: swing high/low'u bul, seviyeleri hesapla
+   // YARDIMCI: Fraktal dizisini oku — bos (EMPTY_VALUE) degerleri atlayarak
+   // en yakin N adet gecerli fraktal tepe/dibini dondurur.
+   // tampon=0 → Fractal High (tepeler), tampon=1 → Fractal Low (dipler)
+   // Dondurulen dizi: [0]=en yakin, [1]=ikinci yakin, ...
+   // Dondurulen deger: bar indeksi (fiyat icin iHigh/iLow(bar) kullanilir)
    //------------------------------------------------------------------
-   bool FibSeviyesiMi(double fiyat, bool alisSenaryosu)
+   int FraktalBarlariAl(int tampon, int aramaDerinligi, int &barlar[], int istenen)
    {
-      // Swing high / swing low bul (son 50 bar)
-      double yukari = iHigh(m_sembol, m_zaman, iHighest(m_sembol, m_zaman, MODE_HIGH, 50, 1));
-      double asagi  = iLow (m_sembol, m_zaman, iLowest (m_sembol, m_zaman, MODE_LOW,  50, 1));
-      double aralik = yukari - asagi;
-      if(aralik < _Point) return false;
+      double buf[];
+      ArraySetAsSeries(buf, true);
+      // iFractals en az 5 bar gerektirir; shift 2'den itibaren gecerli
+      if(CopyBuffer(m_fractalsHandle, tampon, 2, aramaDerinligi, buf) <= 0) return 0;
 
-      double tolerans = aralik * 0.005; // %0.5 tolerans
+      int bulunan = 0;
+      ArrayResize(barlar, istenen);
 
-      // Retracement seviyeleri (alış için asağıdan ölçülür)
-      double ret618 = alisSenaryosu ? asagi  + aralik * 0.382 : yukari - aralik * 0.382;
-      double ret786 = alisSenaryosu ? asagi  + aralik * 0.214 : yukari - aralik * 0.214;
-
-      // Extension seviyeleri
-      double ext1272 = alisSenaryosu ? asagi  - aralik * 0.272 : yukari + aralik * 0.272;
-      double ext1618 = alisSenaryosu ? asagi  - aralik * 0.618 : yukari + aralik * 0.618;
-
-      bool retFib  = (MathAbs(fiyat - ret618) <= tolerans || MathAbs(fiyat - ret786) <= tolerans);
-      bool extFib  = (MathAbs(fiyat - ext1272) <= tolerans || MathAbs(fiyat - ext1618) <= tolerans);
-
-      return (retFib || extFib);
+      for(int i = 0; i < aramaDerinligi && bulunan < istenen; i++)
+      {
+         if(buf[i] != EMPTY_VALUE && buf[i] > 0)
+         {
+            barlar[bulunan] = i + 2;   // gercek bar indeksi (shift 2 offset)
+            bulunan++;
+         }
+      }
+      return bulunan;
    }
 
    //------------------------------------------------------------------
-   // PRZ KOŞUL 3: Kırılan destek/direncin dönüşüm noktası (S/R flip)
+   // YASAKLI ZAMAN: Gece 00:00 mumu
    //------------------------------------------------------------------
-   bool SRFlipMi(double fiyat, bool alisSenaryosu)
+   bool GeceyarisiBariMi()
    {
-      double tolerans = 20 * _Point;
-      int aramaBar = 100;
+      MqlDateTime mt;
+      TimeToStruct(iTime(m_sembol, m_zaman, 1), mt);
+      return (mt.hour == 0 && mt.min == 0);
+   }
 
-      for(int i = 5; i < aramaBar; i++)
+   //------------------------------------------------------------------
+   // YASAKLI ZAMAN: Haber penceresi (takvim verisi yoksa gecir)
+   //------------------------------------------------------------------
+   bool HaberZamaniMi()
+   {
+      if(m_haberFilt.OnbellekSayisi() < 0) return false;
+      return m_haberFilt.HaberZamaniMi(TimeCurrent(), 30);
+   }
+
+   //------------------------------------------------------------------
+   // YASAKLI ZAMAN: Asiri sert mum (ATR x3)
+   //------------------------------------------------------------------
+   bool AsiriSertMumMu()
+   {
+      double aralik1 = iHigh(m_sembol, m_zaman, 1) - iLow(m_sembol, m_zaman, 1);
+      double toplam  = 0;
+      for(int i = 2; i <= 21; i++)
+         toplam += iHigh(m_sembol, m_zaman, i) - iLow(m_sembol, m_zaman, i);
+      return (aralik1 > (toplam / 20.0) * 3.0);
+   }
+
+   //------------------------------------------------------------------
+   // SART 1A — S/R Flip:
+   // Fraktal High kirilmis → fiyat o seviyeye destek olarak geri dondu  (alis)
+   // Fraktal Low  kirilmis → fiyat o seviyeye direnc olarak geri dondu  (satis)
+   // Kontrol: kapanis barin fraktal seviyesine tolerans mesafesinde mi?
+   //------------------------------------------------------------------
+   bool SRFlipMi(double kapanis, bool alis)
+   {
+      double tolerans = 15 * _Point;
+      int barlar[];
+      // Alis: kirilmis eski direnc (fraktal tepe) simdi destek oldu mu?
+      // Satis: kirilmis eski destek (fraktal dip) simdi direnc oldu mu?
+      int tampon = alis ? 0 : 1;   // 0=High fractals, 1=Low fractals
+      int adet   = FraktalBarlariAl(tampon, 200, barlar, 10);
+
+      for(int i = 0; i < adet; i++)
       {
-         double yukari = iHigh(m_sembol, m_zaman, i);
-         double asagi  = iLow (m_sembol, m_zaman, i);
+         int    b        = barlar[i];
+         double seviye   = alis ? iHigh(m_sembol, m_zaman, b)
+                                : iLow (m_sembol, m_zaman, b);
 
-         // Pivot yüksek: her iki taraftan da yüksek
-         bool pivotYuksek = (yukari > iHigh(m_sembol, m_zaman, i+1) &&
-                             yukari > iHigh(m_sembol, m_zaman, i+2) &&
-                             yukari > iHigh(m_sembol, m_zaman, i-1) &&
-                             yukari > iHigh(m_sembol, m_zaman, i-2));
+         // Fraktalin kirilip kirilmadigini kontrol et:
+         // Alis  → fraktal tepe kapanis ile asilmis olmali (fiyat once yukari kirdi)
+         //         ve simdi o seviyeye destek olarak geri donmeli
+         // Satis → fraktal dip kapanis ile asilmis olmali
+         //         ve simdi o seviyeye direnc olarak geri donmeli
+         bool kirilmis;
+         if(alis)
+            kirilmis = (iClose(m_sembol, m_zaman, b - 1) > seviye);  // kirildiktan sonraki bar
+         else
+            kirilmis = (iClose(m_sembol, m_zaman, b - 1) < seviye);
 
-         // Pivot düşük
-         bool pivotDusuk = (asagi < iLow(m_sembol, m_zaman, i+1) &&
-                            asagi < iLow(m_sembol, m_zaman, i+2) &&
-                            asagi < iLow(m_sembol, m_zaman, i-1) &&
-                            asagi < iLow(m_sembol, m_zaman, i-2));
+         if(!kirilmis) continue;
 
-         if(alisSenaryosu && pivotYuksek && MathAbs(fiyat - yukari) <= tolerans)
-            return true;  // Eski direnç → destek'e dönüştü
-
-         if(!alisSenaryosu && pivotDusuk && MathAbs(fiyat - asagi) <= tolerans)
-            return true;  // Eski destek → direnç'e dönüştü
+         // Simdi fiyat o seviyeye geri donmus mu?
+         if(MathAbs(kapanis - seviye) <= tolerans)
+            return true;
       }
       return false;
    }
 
    //------------------------------------------------------------------
-   // PRZ KOŞUL 4: RSI aşırı alım/satım
+   // SART 1B — Fibonacci %61.8 - %78.6 Bolgesi:
+   // Son 2 gecerli fraktal tepe/dip arasindaki dalganin fibo bolgesi
    //------------------------------------------------------------------
-   bool RSIAsiriMi(bool alisSenaryosu)
+   bool FiboBolgesindeMi(double kapanis, bool alis)
+   {
+      int yuksekBarlar[], dusukBarlar[];
+      int ny = FraktalBarlariAl(0, 150, yuksekBarlar, 2);
+      int nd = FraktalBarlariAl(1, 150, dusukBarlar,  2);
+      if(ny < 2 || nd < 2) return false;
+
+      // Son swing: en yakin fraktal tepe ve dip
+      double swingYuksek = iHigh(m_sembol, m_zaman, yuksekBarlar[0]);
+      double swingDusuk  = iLow (m_sembol, m_zaman, dusukBarlar [0]);
+      double aralik      = swingYuksek - swingDusuk;
+      if(aralik < _Point * 10) return false;
+
+      double tolerans = aralik * 0.01;   // %1 bant genisligi
+
+      if(alis)
+      {
+         // Alis: swingDusuk'tan yukari olcumlenen %61.8 - %78.6
+         double f618 = swingDusuk + aralik * 0.618;
+         double f786 = swingDusuk + aralik * 0.786;  // not: asagi retracement, dusukten yukari
+         // Aslinda alis retracementi: fiyat asagidan %61.8-%78.6'ya geldi
+         // Yani swingYuksek - aralik*0.786 ile swingYuksek - aralik*0.618 arasi
+         double alt = swingYuksek - aralik * 0.786;
+         double ust = swingYuksek - aralik * 0.618;
+         return (kapanis >= alt - tolerans && kapanis <= ust + tolerans);
+      }
+      else
+      {
+         // Satis: swingYuksek'ten asagi olcumlenen %61.8 - %78.6 retracement
+         double alt = swingDusuk  + aralik * 0.618;
+         double ust = swingDusuk  + aralik * 0.786;
+         return (kapanis >= alt - tolerans && kapanis <= ust + tolerans);
+      }
+   }
+
+   //------------------------------------------------------------------
+   // SART 1C — RSI Asiri Alim/Satim:
+   // Alis icin RSI(14) <= 30, Satis icin >= 70
+   //------------------------------------------------------------------
+   bool RSIAsiriMi(bool alis)
    {
       double rsi = IndikatorDeger(m_rsiHandle, 0, 1);
       if(rsi == EMPTY_VALUE) return false;
-
-      return (alisSenaryosu ? rsi < 30.0 : rsi > 70.0);
+      return alis ? (rsi <= 30.0) : (rsi >= 70.0);
    }
 
    //------------------------------------------------------------------
-   // PRZ KOŞUL 5: MACD uyumsuzluğu (divergence)
-   // Alış: fiyat yeni dip yapıyor ama MACD ana çizgisi yapmıyor
-   // Satış: fiyat yeni tepe yapıyor ama MACD yapmıyor
+   // H4 TREND ONERISI (zorunlu degil — log icin)
    //------------------------------------------------------------------
-   bool MACDUyumsuzlukMu(bool alisSenaryosu)
+   bool H4TrendUyumuMu(bool alis)
    {
-      // Mevcut bar ve 10 bar öncesiyle karşılaştır
-      double fiyatSon  = iClose(m_sembol, m_zaman, 1);
-      double fiyatOnce = iClose(m_sembol, m_zaman, 10);
-
-      double macdSon   = IndikatorDeger(m_macdHandle, 0, 1);   // Ana çizgi
-      double macdOnce  = IndikatorDeger(m_macdHandle, 0, 10);
-
-      if(macdSon == EMPTY_VALUE || macdOnce == EMPTY_VALUE) return false;
-
-      if(alisSenaryosu)
-         return (fiyatSon < fiyatOnce && macdSon > macdOnce);  // Fiyat yeni dip, MACD yapmıyor
-      else
-         return (fiyatSon > fiyatOnce && macdSon < macdOnce);  // Fiyat yeni tepe, MACD yapmıyor
-   }
-
-   //------------------------------------------------------------------
-   // PRZ KOŞUL 6: Harmonik formasyon — Bat modeli D noktası
-   // XA hareketinin %88.6'sı (basit: swing hareketine göre)
-   //------------------------------------------------------------------
-   bool HarmonikBatMi(double fiyat, bool alisSenaryosu)
-   {
-      double yukari = iHigh(m_sembol, m_zaman, iHighest(m_sembol, m_zaman, MODE_HIGH, 100, 1));
-      double asagi  = iLow (m_sembol, m_zaman, iLowest (m_sembol, m_zaman, MODE_LOW,  100, 1));
-      double aralik = yukari - asagi;
-      if(aralik < _Point) return false;
-
-      double d886  = alisSenaryosu ? yukari - aralik * 0.886 : asagi + aralik * 0.886;
-      double tolerans = aralik * 0.005;
-
-      return (MathAbs(fiyat - d886) <= tolerans);
-   }
-
-   //------------------------------------------------------------------
-   // PRZ DOĞRULAMA: En az 5 koşul sağlanmalı
-   //------------------------------------------------------------------
-   int PRZPuanHesapla(double fiyat, bool alisSenaryosu)
-   {
-      int puan = 0;
-      if(FibSeviyesiMi   (fiyat, alisSenaryosu)) puan++;
-      if(SRFlipMi        (fiyat, alisSenaryosu)) puan++;
-      if(RSIAsiriMi      (alisSenaryosu))         puan++;
-      if(MACDUyumsuzlukMu(alisSenaryosu))         puan++;
-      if(HarmonikBatMi   (fiyat, alisSenaryosu)) puan++;
-      return puan;
-   }
-
-   //------------------------------------------------------------------
-   // TETİKLEYİCİ MUM: Pinbar, Engulfing veya HHHC/LLLC
-   //------------------------------------------------------------------
-   ENUM_TETIKLEYICI TetikleyiciMumKontrol(bool alisSenaryosu)
-   {
-      double acilis1 = iOpen (m_sembol, m_zaman, 1);
-      double kapanis1= iClose(m_sembol, m_zaman, 1);
-      double yukari1 = iHigh (m_sembol, m_zaman, 1);
-      double asagi1  = iLow  (m_sembol, m_zaman, 1);
-
-      double acilis2 = iOpen (m_sembol, m_zaman, 2);
-      double kapanis2= iClose(m_sembol, m_zaman, 2);
-      double yukari2 = iHigh (m_sembol, m_zaman, 2);
-      double asagi2  = iLow  (m_sembol, m_zaman, 2);
-
-      double govde1 = MathAbs(kapanis1 - acilis1);
-      double aralik1= yukari1 - asagi1;
-      if(aralik1 < _Point) return TETIK_YOK;
-
-      // --- Pinbar ---
-      // Alış pinbar: uzun alt fitil (aralığın >%60), küçük gövde, üstte kapanış
-      if(alisSenaryosu)
-      {
-         double altFitil = MathMin(acilis1, kapanis1) - asagi1;
-         if(altFitil > aralik1 * 0.6 && govde1 < aralik1 * 0.3)
-            return TETIK_PINBAR;
-      }
-      else
-      {
-         double ustFitil = yukari1 - MathMax(acilis1, kapanis1);
-         if(ustFitil > aralik1 * 0.6 && govde1 < aralik1 * 0.3)
-            return TETIK_PINBAR;
-      }
-
-      // --- Engulfing ---
-      // Alış engulfing: önceki mum bearish, şimdiki bullish ve tamamen yutar
-      if(alisSenaryosu)
-      {
-         bool oncekiBearish = kapanis2 < acilis2;
-         bool simdikiBullish= kapanis1 > acilis1;
-         if(oncekiBearish && simdikiBullish &&
-            kapanis1 > acilis2 && acilis1 < kapanis2)
-            return TETIK_ENGULFING;
-      }
-      else
-      {
-         bool oncekiBullish  = kapanis2 > acilis2;
-         bool simdikiBearish = kapanis1 < acilis1;
-         if(oncekiBullish && simdikiBearish &&
-            kapanis1 < acilis2 && acilis1 > kapanis2)
-            return TETIK_ENGULFING;
-      }
-
-      // --- HHHC (alış) / LLLC (satış) ---
-      if(alisSenaryosu)
-      {
-         // Higher High Higher Close
-         if(yukari1 > yukari2 && kapanis1 > kapanis2 && kapanis1 > acilis1)
-            return TETIK_HHHC_LLLC;
-      }
-      else
-      {
-         // Lower Low Lower Close
-         if(asagi1 < asagi2 && kapanis1 < kapanis2 && kapanis1 < acilis1)
-            return TETIK_HHHC_LLLC;
-      }
-
-      return TETIK_YOK;
-   }
-
-   //------------------------------------------------------------------
-   // YASAKLI ZAMAN 1: Gece 00:00 mum geçişi
-   //------------------------------------------------------------------
-   bool GeceyarisiBariMi()
-   {
-      datetime barZamani = iTime(m_sembol, m_zaman, 1);
-      MqlDateTime mt;
-      TimeToStruct(barZamani, mt);
-      // H1 çerçevesinde saat 00:00 başlayan mum
-      return (mt.hour == 0 && mt.min == 0);
-   }
-
-   //------------------------------------------------------------------
-   // YASAKLI ZAMAN 2: Haber saati (MT5 Ekonomik Takvim önbelleği üzerinden)
-   // Strategy Tester'da veya takvim verisi yoksa sadece uyarı ver, engelleme.
-   //------------------------------------------------------------------
-   bool HaberZamaniMi()
-   {
-      // Takvim verisi hiç dolmadıysa (Tester ortamı veya bağlantı yoksa) geç
-      if(m_haberFilt.OnbellekSayisi() < 0)
-         return false;   // Uyarı Init'te zaten basıldı, burada engelleme
-
-      return m_haberFilt.HaberZamaniMi(TimeCurrent(), 30);
-   }
-
-   //------------------------------------------------------------------
-   // YASAKLI ZAMAN 3: Aşırı sert/hacimli mum (spread tehlikesi)
-   // Kriter: son mumun aralığı, son 20 barın ortalamasının 3 katından büyük
-   //------------------------------------------------------------------
-   bool AsiriSertMumMu()
-   {
-      double aralik1 = iHigh(m_sembol, m_zaman, 1) - iLow(m_sembol, m_zaman, 1);
-      double toplamAralik = 0;
-      for(int i = 2; i <= 21; i++)
-         toplamAralik += iHigh(m_sembol, m_zaman, i) - iLow(m_sembol, m_zaman, i);
-      double ortAralik = toplamAralik / 20.0;
-
-      return (aralik1 > ortAralik * 3.0);
-   }
-
-   //------------------------------------------------------------------
-   // H4 TREND ONAYI: H4 RSI yönü H1 sinyaliyle uyuşuyor mu?
-   // "Öneri" seviyesi — false döndürse de işlemi engellemez, sadece loglar.
-   // Zorunlu filtre olarak kullanılmaz; çağıran kod uyarı amaçlı okur.
-   //------------------------------------------------------------------
-   bool H4TrendUyumuMu(bool alisSenaryosu)
-   {
-      double rsiH4 = IndikatorDeger(m_rsiH4Handle, 0, 1);
-      if(rsiH4 == EMPTY_VALUE) return true;
-
-      // Alış için H4 RSI < 65, satış için > 35 (geniş bant)
-      return (alisSenaryosu ? rsiH4 < 65.0 : rsiH4 > 35.0);
+      double rsi = IndikatorDeger(m_rsiH4Handle, 0, 1);
+      if(rsi == EMPTY_VALUE) return true;
+      return alis ? (rsi < 65.0) : (rsi > 35.0);
    }
 
 public:
@@ -505,150 +327,295 @@ public:
       : m_sembol(sembol), m_zaman(zaman),
         m_rsiHandle(INVALID_HANDLE),
         m_macdHandle(INVALID_HANDLE),
+        m_fractalsHandle(INVALID_HANDLE),
         m_rsiH4Handle(INVALID_HANDLE),
         m_sonBarZamani(0) {}
 
    //------------------------------------------------------------------
-   // Init: İndikatör handle'larını oluştur, haber filtresini başlat
+   // Init
    //------------------------------------------------------------------
    bool Init()
    {
-      // H1 RSI (periyot 14)
-      m_rsiHandle = iRSI(m_sembol, PERIOD_H1, 14, PRICE_CLOSE);
+      m_rsiHandle = iRSI(m_sembol, m_zaman, 14, PRICE_CLOSE);
       if(m_rsiHandle == INVALID_HANDLE)
-      { Print("HATA: H1 RSI handle oluşturulamadı!"); return false; }
+      { Print("HATA: RSI handle olusturulamadi!"); return false; }
 
-      // H1 MACD (12,26,9)
-      m_macdHandle = iMACD(m_sembol, PERIOD_H1, 12, 26, 9, PRICE_CLOSE);
+      m_macdHandle = iMACD(m_sembol, m_zaman, 12, 26, 9, PRICE_CLOSE);
       if(m_macdHandle == INVALID_HANDLE)
-      { Print("HATA: H1 MACD handle oluşturulamadı!"); return false; }
+      { Print("HATA: MACD handle olusturulamadi!"); return false; }
 
-      // H4 RSI (trend onayı)
+      // iFractals: tampon 0 = High fractals, tampon 1 = Low fractals
+      m_fractalsHandle = iFractals(m_sembol, m_zaman);
+      if(m_fractalsHandle == INVALID_HANDLE)
+      { Print("HATA: Fractals handle olusturulamadi!"); return false; }
+
       m_rsiH4Handle = iRSI(m_sembol, PERIOD_H4, 14, PRICE_CLOSE);
       if(m_rsiH4Handle == INVALID_HANDLE)
-      { Print("HATA: H4 RSI handle oluşturulamadı!"); return false; }
+      { Print("HATA: H4 RSI handle olusturulamadi!"); return false; }
 
-      // MT5 Ekonomik Takvim haber filtresi — sembolden para birimlerini otomatik algılar
       if(!m_haberFilt.Init(m_sembol))
-      { Print("UYARI: Haber filtresi başlatılamadı — haber filtresi devre dışı."); }
+         Print("UYARI: Haber filtresi baslatılamadı.");
 
-      Print("CSignal başlatıldı — Sembol: ", m_sembol,
-            " | Ana TF: H1 | Trend TF: H4");
+      Print("CSignal basladi | Sembol: ", m_sembol, " | TF: ", EnumToString(m_zaman));
       return true;
    }
 
    //------------------------------------------------------------------
-   // Deinit: İndikatör handle'larını serbest bırak
+   // Deinit
    //------------------------------------------------------------------
    void Deinit()
    {
-      if(m_rsiHandle   != INVALID_HANDLE) IndicatorRelease(m_rsiHandle);
-      if(m_macdHandle  != INVALID_HANDLE) IndicatorRelease(m_macdHandle);
-      if(m_rsiH4Handle != INVALID_HANDLE) IndicatorRelease(m_rsiH4Handle);
-
-      Print("CSignal kapatıldı.");
+      if(m_rsiHandle      != INVALID_HANDLE) IndicatorRelease(m_rsiHandle);
+      if(m_macdHandle     != INVALID_HANDLE) IndicatorRelease(m_macdHandle);
+      if(m_fractalsHandle != INVALID_HANDLE) IndicatorRelease(m_fractalsHandle);
+      if(m_rsiH4Handle    != INVALID_HANDLE) IndicatorRelease(m_rsiH4Handle);
+      Print("CSignal kapatildi.");
    }
 
    //------------------------------------------------------------------
-   // SinyalAl: Ana sinyal fonksiyonu
-   // PRZ eşiği: 3/5 koşul (gevşetildi — eskiden 5/5 idi)
-   // H4 trend: zorunlu değil, "öneri" — engellemiyor, sadece logluyor
-   // Döndürür: SIGNAL_AL, SIGNAL_SAT veya SIGNAL_YOK
+   // SART 1 — FiyatPRZBolgesindeMi:
+   // (S/R Flip VEYA Fibo %61.8-%78.6) VE RSI asiri alim/satim
+   //------------------------------------------------------------------
+   bool FiyatPRZBolgesindeMi(bool alis)
+   {
+      double kapanis = iClose(m_sembol, m_zaman, 1);
+
+      bool srFlip = SRFlipMi    (kapanis, alis);
+      bool fibo   = FiboBolgesindeMi(kapanis, alis);
+      bool rsi    = RSIAsiriMi  (alis);
+
+      Print("PRZ kontrol | Yon=", (alis ? "AL" : "SAT"),
+            " | SRFlip=", srFlip,
+            " | Fibo=",   fibo,
+            " | RSI=",    rsi,
+            " | Fiyat=",  DoubleToString(kapanis, _Digits));
+
+      return ((srFlip || fibo) && rsi);
+   }
+
+   //------------------------------------------------------------------
+   // SART 2 — UyumsuzlukVarMi:
+   // En son 2 fraktal tepe/dip ile o barlardaki MACD histogram degerlerini
+   // karsilastir.
+   //   AL (Bullish div) : Fiyat LL yaparken MACD HL — dondurur  1
+   //   SAT (Bearish div): Fiyat HH yaparken MACD LH — dondurur -1
+   //   Yok               :                           — dondurur  0
+   //------------------------------------------------------------------
+   int UyumsuzlukVarMi()
+   {
+      // --- BULLIS DIV: son 2 fraktal dip ---
+      int dipBarlar[];
+      if(FraktalBarlariAl(1, 150, dipBarlar, 2) == 2)
+      {
+         int   b1 = dipBarlar[0];   // daha yakin dip
+         int   b2 = dipBarlar[1];   // daha eski dip
+
+         double fiyat1 = iLow(m_sembol, m_zaman, b1);
+         double fiyat2 = iLow(m_sembol, m_zaman, b2);
+
+         // MACD histogram: tampon indeksi 2
+         double macd1  = IndikatorDeger(m_macdHandle, 2, b1);
+         double macd2  = IndikatorDeger(m_macdHandle, 2, b2);
+
+         if(macd1 != EMPTY_VALUE && macd2 != EMPTY_VALUE)
+         {
+            bool fiyatLL = (fiyat1 < fiyat2);   // Lower Low
+            bool macdHL  = (macd1  > macd2);    // Higher Low (histogram daha az negatif)
+
+            Print("Div AL kontrol | Fiyat1=", DoubleToString(fiyat1, _Digits),
+                  " Fiyat2=", DoubleToString(fiyat2, _Digits),
+                  " | MACD1=", DoubleToString(macd1, 8),
+                  " MACD2=",   DoubleToString(macd2, 8),
+                  " | LL=", fiyatLL, " HL=", macdHL);
+
+            if(fiyatLL && macdHL) return 1;
+         }
+      }
+
+      // --- BEARISH DIV: son 2 fraktal tepe ---
+      int tepeBarlar[];
+      if(FraktalBarlariAl(0, 150, tepeBarlar, 2) == 2)
+      {
+         int   b1 = tepeBarlar[0];
+         int   b2 = tepeBarlar[1];
+
+         double fiyat1 = iHigh(m_sembol, m_zaman, b1);
+         double fiyat2 = iHigh(m_sembol, m_zaman, b2);
+
+         double macd1  = IndikatorDeger(m_macdHandle, 2, b1);
+         double macd2  = IndikatorDeger(m_macdHandle, 2, b2);
+
+         if(macd1 != EMPTY_VALUE && macd2 != EMPTY_VALUE)
+         {
+            bool fiyatHH = (fiyat1 > fiyat2);   // Higher High
+            bool macdLH  = (macd1  < macd2);    // Lower High  (histogram daha az pozitif)
+
+            Print("Div SAT kontrol | Fiyat1=", DoubleToString(fiyat1, _Digits),
+                  " Fiyat2=", DoubleToString(fiyat2, _Digits),
+                  " | MACD1=", DoubleToString(macd1, 8),
+                  " MACD2=",   DoubleToString(macd2, 8),
+                  " | HH=", fiyatHH, " LH=", macdLH);
+
+            if(fiyatHH && macdLH) return -1;
+         }
+      }
+
+      return 0;
+   }
+
+   //------------------------------------------------------------------
+   // SART 3 — TetikleyiciMumGeldMii:
+   // Shift 1 (kapanmis mum) uzerinde 3 formasyon arar.
+   // Pinbar kurali: mumu 4 esit dilime bol (%25'lik).
+   //   AL pinbar : Close en ust %25'te && alt fitil uzun
+   //   SAT pinbar: Close en alt %25'te && ust fitil uzun
+   // Engulfing (fitil dahil yutma):
+   //   AL: High[1]>High[2] && Low[1]<Low[2] && Close[1]>Open[1]
+   //   SAT: tam tersi
+   // HHHC / LLLC:
+   //   AL (HHHC): Low[1]>Low[2] && High[1]>High[2] && Close[1]>Close[2]
+   //   SAT(LLLC): Low[1]<Low[2] && High[1]<High[2] && Close[1]<Close[2]
+   // Dondurur: TETIK_PINBAR | TETIK_ENGULFING | TETIK_HHHC_LLLC | TETIK_YOK
+   //------------------------------------------------------------------
+   ENUM_TETIKLEYICI TetikleyiciMumGeldMii(bool alis)
+   {
+      double o1 = iOpen (m_sembol, m_zaman, 1);
+      double c1 = iClose(m_sembol, m_zaman, 1);
+      double h1 = iHigh (m_sembol, m_zaman, 1);
+      double l1 = iLow  (m_sembol, m_zaman, 1);
+
+      double o2 = iOpen (m_sembol, m_zaman, 2);
+      double c2 = iClose(m_sembol, m_zaman, 2);
+      double h2 = iHigh (m_sembol, m_zaman, 2);
+      double l2 = iLow  (m_sembol, m_zaman, 2);
+
+      double aralik = h1 - l1;
+      if(aralik < _Point * 5) return TETIK_YOK;   // Anlamsiz kucuk mum
+
+      double dilim = aralik / 4.0;   // %25'lik dilim
+
+      // --- PINBAR ---
+      if(alis)
+      {
+         // Kapanis en ust %25 diliminde olmali: c1 >= l1 + 3*dilim
+         bool kapanisUstte = (c1 >= l1 + 3.0 * dilim);
+         // Alt fitil uzun: gövde altindan dip'e mesafe > aralik*%50
+         double altFitil = MathMin(o1, c1) - l1;
+         bool altFitilUzun = (altFitil >= aralik * 0.5);
+         if(kapanisUstte && altFitilUzun) return TETIK_PINBAR;
+      }
+      else
+      {
+         // Kapanis en alt %25 diliminde olmali: c1 <= l1 + dilim
+         bool kapanisAltta = (c1 <= l1 + dilim);
+         // Ust fitil uzun
+         double ustFitil = h1 - MathMax(o1, c1);
+         bool ustFitilUzun = (ustFitil >= aralik * 0.5);
+         if(kapanisAltta && ustFitilUzun) return TETIK_PINBAR;
+      }
+
+      // --- ENGULFING (fitil dahil) ---
+      if(alis)
+      {
+         // Onceki mum bearish, simdi bullish, fitil dahil yutuyor
+         bool oncekiBearish  = (c2 < o2);
+         bool simdikiBullish = (c1 > o1);
+         bool yutuyor        = (h1 > h2 && l1 < l2);
+         if(oncekiBearish && simdikiBullish && yutuyor) return TETIK_ENGULFING;
+      }
+      else
+      {
+         bool oncekiBullish  = (c2 > o2);
+         bool simdikiBearish = (c1 < o1);
+         bool yutuyor        = (h1 > h2 && l1 < l2);
+         if(oncekiBullish && simdikiBearish && yutuyor) return TETIK_ENGULFING;
+      }
+
+      // --- HHHC / LLLC ---
+      if(alis)
+      {
+         // Higher Low, Higher High, Higher Close (HHHC)
+         if(l1 > l2 && h1 > h2 && c1 > c2) return TETIK_HHHC_LLLC;
+      }
+      else
+      {
+         // Lower Low, Lower High, Lower Close (LLLC)
+         if(l1 < l2 && h1 < h2 && c1 < c2) return TETIK_HHHC_LLLC;
+      }
+
+      return TETIK_YOK;
+   }
+
+   //------------------------------------------------------------------
+   // SinyalAl: Nihai karar
+   // Kosul: PRZ onay VE MACD uyumsuzlugu VE tetikleyici mum
+   // Dondurur: SIGNAL_AL | SIGNAL_SAT | SIGNAL_YOK
    //------------------------------------------------------------------
    ENUM_SIGNAL SinyalAl()
    {
       // === YENİ BAR KORUMASI ===
-      // Tüm hesaplar ve loglar sadece yeni H1 bar açılışında çalışır.
-      // Aynı bar içindeki sonraki tickler sessizce SIGNAL_YOK döner.
       datetime barZamani = iTime(m_sembol, m_zaman, 1);
-      if(barZamani == m_sonBarZamani)
-         return SIGNAL_YOK;
+      if(barZamani == m_sonBarZamani) return SIGNAL_YOK;
       m_sonBarZamani = barZamani;
 
-      // === YASAKLI ZAMAN KONTROLÜ ===
-      if(GeceyarisiBariMi())
-         return SIGNAL_YOK;
+      // === YASAKLI ZAMANLAR ===
+      if(GeceyarisiBariMi()) return SIGNAL_YOK;
 
       if(HaberZamaniMi())
       {
-         Print("PRZ: Haber saati — islem engellendi. (",
+         Print("SINYAL: Haber saati — engellendi (",
                TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES), ")");
          return SIGNAL_YOK;
       }
       if(AsiriSertMumMu())
       {
-         Print("PRZ: Asiri sert mum — engellendi.");
+         Print("SINYAL: Asiri sert mum — engellendi.");
          return SIGNAL_YOK;
       }
 
-      double fiyat = iClose(m_sembol, m_zaman, 1);
+      // === MACD UYUMSUZLUGU (yön belirleyici) ===
+      int divYon = UyumsuzlukVarMi();   // 1=bullish, -1=bearish, 0=yok
 
-      // === ALIŞI SENARYOSU ===
-      int alisPuan = PRZPuanHesapla(fiyat, true);
-      bool alisH4  = H4TrendUyumuMu(true);
-
-      if(alisPuan >= 3)   // Eşik: 5 → 3
+      if(divYon == 0)
       {
-         ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(true);
-
-         // Detaylı log: neden geçti veya neden reddedildi
-         Print("PRZ ALIS degerlendirme | Fiyat: ", DoubleToString(fiyat, _Digits),
-               " | Puan: ", alisPuan, "/5",
-               " | H4Trend: ", (alisH4 ? "OK" : "ZAYIF"),
-               " | Tetik: ", EnumToString(tetik));
-
-         if(tetik != TETIK_YOK)
-         {
-            if(!alisH4)
-               Print("PRZ ALIS: H4 trend zayif ama devam ediliyor (oneri seviyesi).");
-            Print(">>> PRZ AL Sinyali | Puan: ", alisPuan,
-                  " | Tetikleyici: ", EnumToString(tetik));
-            return SIGNAL_AL;
-         }
-         else
-            Print("PRZ ALIS RED: Tetikleyici mum yok (puan=", alisPuan, ").");
-      }
-      else if(alisPuan > 0)
-      {
-         Print("PRZ ALIS yetersiz puan: ", alisPuan, "/5 (min 3 gerekli)",
-               " | Fiyat: ", DoubleToString(fiyat, _Digits));
+         Print("SINYAL: MACD uyumsuzlugu yok — gecildi.");
+         return SIGNAL_YOK;
       }
 
-      // === SATIŞ SENARYOSU ===
-      int satisPuan = PRZPuanHesapla(fiyat, false);
-      bool satisH4  = H4TrendUyumuMu(false);
+      bool alis = (divYon == 1);
 
-      if(satisPuan >= 3)   // Eşik: 5 → 3
+      // === SART 1: PRZ ===
+      bool przOnay = FiyatPRZBolgesindeMi(alis);
+      if(!przOnay)
       {
-         ENUM_TETIKLEYICI tetik = TetikleyiciMumKontrol(false);
-
-         Print("PRZ SATIS degerlendirme | Fiyat: ", DoubleToString(fiyat, _Digits),
-               " | Puan: ", satisPuan, "/5",
-               " | H4Trend: ", (satisH4 ? "OK" : "ZAYIF"),
-               " | Tetik: ", EnumToString(tetik));
-
-         if(tetik != TETIK_YOK)
-         {
-            if(!satisH4)
-               Print("PRZ SATIS: H4 trend zayif ama devam ediliyor (oneri seviyesi).");
-            Print(">>> PRZ SAT Sinyali | Puan: ", satisPuan,
-                  " | Tetikleyici: ", EnumToString(tetik));
-            return SIGNAL_SAT;
-         }
-         else
-            Print("PRZ SATIS RED: Tetikleyici mum yok (puan=", satisPuan, ").");
-      }
-      else if(satisPuan > 0)
-      {
-         Print("PRZ SATIS yetersiz puan: ", satisPuan, "/5 (min 3 gerekli)",
-               " | Fiyat: ", DoubleToString(fiyat, _Digits));
+         Print("SINYAL: PRZ bolgesi onaylı degil — RED | Yon=", (alis ? "AL" : "SAT"));
+         return SIGNAL_YOK;
       }
 
-      return SIGNAL_YOK;
+      // === SART 3: TETIKLEYICI MUM ===
+      ENUM_TETIKLEYICI tetik = TetikleyiciMumGeldMii(alis);
+      if(tetik == TETIK_YOK)
+      {
+         Print("SINYAL: PRZ+Div onaylı ama tetikleyici mum yok | Yon=", (alis ? "AL" : "SAT"));
+         return SIGNAL_YOK;
+      }
+
+      // === H4 TREND ONERISI (engellemiyor) ===
+      bool h4uyum = H4TrendUyumuMu(alis);
+      if(!h4uyum)
+         Print("SINYAL: H4 trend zayif ama devam ediliyor (oneri).");
+
+      Print(">>> SINYAL ", (alis ? "AL" : "SAT"),
+            " | Tetik=", EnumToString(tetik),
+            " | Div=",   (divYon == 1 ? "Bullish" : "Bearish"),
+            " | H4=",    (h4uyum ? "OK" : "ZAYIF"),
+            " | Bar=",   TimeToString(barZamani, TIME_DATE|TIME_MINUTES));
+
+      return alis ? SIGNAL_AL : SIGNAL_SAT;
    }
 
    //------------------------------------------------------------------
-   // Erişiciler
+   // Erisiciler
    //------------------------------------------------------------------
    string          Sembol() const { return m_sembol; }
    ENUM_TIMEFRAMES Zaman()  const { return m_zaman;  }
