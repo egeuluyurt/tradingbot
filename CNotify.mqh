@@ -56,9 +56,8 @@ private:
    //--- Soğutma zamanları: her mesaj anahtarı için son gönderim anı
    //    Anahtar: katman + "_" + kısa mesaj özeti
    //    Basit implementasyon: sabit sayıda slot (maks 32 farklı uyarı türü)
-   static const int  SLOT_SAYISI = 32;
-   string   m_anahtarlar[SLOT_SAYISI];
-   datetime m_zamanlar  [SLOT_SAYISI];
+   string   m_anahtarlar[32];
+   datetime m_zamanlar  [32];
    int      m_slotSayisi;
 
    //--- Günlük telefon bildirimi sayacı
@@ -91,7 +90,7 @@ private:
       }
 
       // Yeni anahtar — ekle
-      if(m_slotSayisi < SLOT_SAYISI)
+      if(m_slotSayisi < 32)
       {
          m_anahtarlar[m_slotSayisi] = anahtar;
          m_zamanlar  [m_slotSayisi] = simdi;
@@ -101,7 +100,7 @@ private:
       {
          // Slot doldu — en eski girişin üzerine yaz (FIFO)
          int enEski = 0;
-         for(int i = 1; i < SLOT_SAYISI; i++)
+         for(int i = 1; i < 32; i++)
             if(m_zamanlar[i] < m_zamanlar[enEski]) enEski = i;
          m_anahtarlar[enEski] = anahtar;
          m_zamanlar  [enEski] = simdi;
@@ -225,7 +224,7 @@ public:
         m_telefonGunBaslangici(0),
         m_sonComment("")
    {
-      for(int i = 0; i < SLOT_SAYISI; i++)
+      for(int i = 0; i < 32; i++)
       {
          m_anahtarlar[i] = "";
          m_zamanlar[i]   = 0;

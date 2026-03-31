@@ -7,13 +7,14 @@
 
 #include <Trade\Trade.mqh>   // MT5 yerleşik trade kütüphanesi
 
-// MT5 yerleşik CTrade sınıfına takma ad — isim çakışmasını önler
-typedef CTrade CTradeLib;
-
-class CTrade
+//====================================================================
+//  CTrdr — Bizim emir yönetim sınıfımız
+//  (MT5'in kendi CTrade sınıfıyla çakışmamak için CTrdr adı kullanılır)
+//====================================================================
+class CTrdr
 {
 private:
-   CTradeLib m_trade;        // MT5 yerleşik trade nesnesi (takma ad ile)
+   CTrade m_trade;           // MT5 yerleşik trade nesnesi
    string    m_sembol;       // İşlem sembolü
    ulong     m_sihirliSayi;  // EA'ya özgü Magic Number (çakışma önler)
    int       m_kaymaTolerans;// Slippage — fiyat kayması toleransı (point)
@@ -22,7 +23,7 @@ public:
    //------------------------------------------------------------------
    // Kurucu
    //------------------------------------------------------------------
-   CTrade(string sembol, ulong sihirliSayi, int kaymaTolerans = 10)
+   CTrdr(string sembol, ulong sihirliSayi, int kaymaTolerans = 10)
       : m_sembol(sembol), m_sihirliSayi(sihirliSayi), m_kaymaTolerans(kaymaTolerans)
    {
       m_trade.SetExpertMagicNumber(m_sihirliSayi);
@@ -35,31 +36,26 @@ public:
    //------------------------------------------------------------------
    bool Init()
    {
-      Print("CTrade başlatıldı — Sihirli Sayı: ", m_sihirliSayi);
+      Print("CTrdr başlatıldı — Sihirli Sayı: ", m_sihirliSayi);
       return true;
    }
 
    //------------------------------------------------------------------
    // AlisAc: Piyasa fiyatından alış emri açar
-   //   lot        — lot büyüklüğü
-   //   stopLoss   — stop-loss fiyatı (0 = yok)
-   //   takeProfit — take-profit fiyatı (0 = yok)
-   //   yorum      — emir yorumu (opsiyonel)
-   // Döndürür: true = başarılı
    //------------------------------------------------------------------
    bool AlisAc(double lot, double stopLoss = 0, double takeProfit = 0,
-               string yorum = "TradingBot Alış")
+               string yorum = "TradingBot Alis")
    {
       double fiyat = SymbolInfoDouble(m_sembol, SYMBOL_ASK);
 
       if(!m_trade.Buy(lot, m_sembol, fiyat, stopLoss, takeProfit, yorum))
       {
-         Print("CTrade HATA (Alış): ", m_trade.ResultRetcodeDescription(),
+         Print("CTrdr HATA (Alis): ", m_trade.ResultRetcodeDescription(),
                " | Kod: ", m_trade.ResultRetcode());
          return false;
       }
 
-      Print("CTrade: Alış açıldı — Lot: ", lot,
+      Print("CTrdr: Alis acildi — Lot: ", lot,
             " | Fiyat: ", fiyat,
             " | SL: ", stopLoss,
             " | TP: ", takeProfit);
@@ -70,18 +66,18 @@ public:
    // SatisAc: Piyasa fiyatından satış emri açar
    //------------------------------------------------------------------
    bool SatisAc(double lot, double stopLoss = 0, double takeProfit = 0,
-                string yorum = "TradingBot Satış")
+                string yorum = "TradingBot Satis")
    {
       double fiyat = SymbolInfoDouble(m_sembol, SYMBOL_BID);
 
       if(!m_trade.Sell(lot, m_sembol, fiyat, stopLoss, takeProfit, yorum))
       {
-         Print("CTrade HATA (Satış): ", m_trade.ResultRetcodeDescription(),
+         Print("CTrdr HATA (Satis): ", m_trade.ResultRetcodeDescription(),
                " | Kod: ", m_trade.ResultRetcode());
          return false;
       }
 
-      Print("CTrade: Satış açıldı — Lot: ", lot,
+      Print("CTrdr: Satis acildi — Lot: ", lot,
             " | Fiyat: ", fiyat,
             " | SL: ", stopLoss,
             " | TP: ", takeProfit);
@@ -95,12 +91,12 @@ public:
    {
       if(!m_trade.PositionClose(ticket))
       {
-         Print("CTrade HATA (Kapat): ", m_trade.ResultRetcodeDescription(),
+         Print("CTrdr HATA (Kapat): ", m_trade.ResultRetcodeDescription(),
                " | Ticket: ", ticket);
          return false;
       }
 
-      Print("CTrade: Pozisyon kapatıldı — Ticket: ", ticket);
+      Print("CTrdr: Pozisyon kapatildi — Ticket: ", ticket);
       return true;
    }
 

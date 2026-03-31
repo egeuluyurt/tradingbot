@@ -62,7 +62,7 @@ class CKernel
 private:
    CSignal*  m_sinyal;
    CRisk*    m_risk;
-   CTrade*   m_trade;
+   CTrdr*    m_trade;
    CPanel*   m_panel;
    CNotify*  m_notify;
    CWizard*  m_wizard;
@@ -91,7 +91,7 @@ public:
 
       m_sinyal  = new CSignal (m_sembol, PERIOD_H1);
       m_risk    = new CRisk   (m_sembol, InpRiskYuzdesi);
-      m_trade   = new CTrade  (m_sembol, InpSihirliSayi);
+      m_trade   = new CTrdr   (m_sembol, InpSihirliSayi);
       m_panel   = new CPanel  ("TBot", 5, 30);
       m_notify  = new CNotify ();
       m_wizard  = new CWizard ();
