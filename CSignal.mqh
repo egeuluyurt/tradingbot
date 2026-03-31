@@ -233,6 +233,7 @@ private:
    string          m_sembol;
    ENUM_TIMEFRAMES m_zaman;      // H1 ana zaman dilimi
    CNewsFilter     m_haberFilt;  // MT5 Ekonomik Takvim filtresi (değer tipi, pointer değil)
+   datetime        m_sonBarZamani; // Son değerlendirilen H1 bar zamanı (yeni bar koruması)
 
    //------------------------------------------------------------------
    // YARDIMCI: Tek tampon değeri oku
@@ -504,7 +505,8 @@ public:
       : m_sembol(sembol), m_zaman(zaman),
         m_rsiHandle(INVALID_HANDLE),
         m_macdHandle(INVALID_HANDLE),
-        m_rsiH4Handle(INVALID_HANDLE) {}
+        m_rsiH4Handle(INVALID_HANDLE),
+        m_sonBarZamani(0) {}
 
    //------------------------------------------------------------------
    // Init: İndikatör handle'larını oluştur, haber filtresini başlat
@@ -555,14 +557,22 @@ public:
    //------------------------------------------------------------------
    ENUM_SIGNAL SinyalAl()
    {
+      // === YENİ BAR KORUMASI ===
+      // Tüm hesaplar ve loglar sadece yeni H1 bar açılışında çalışır.
+      // Aynı bar içindeki sonraki tickler sessizce SIGNAL_YOK döner.
+      datetime barZamani = iTime(m_sembol, m_zaman, 1);
+      if(barZamani == m_sonBarZamani)
+         return SIGNAL_YOK;
+      m_sonBarZamani = barZamani;
+
       // === YASAKLI ZAMAN KONTROLÜ ===
-      // Gece yarısı mumu: sadece yeni bar açılışında kontrol et (her tick değil)
       if(GeceyarisiBariMi())
-         return SIGNAL_YOK;   // Sık oluşmaz, log basma
+         return SIGNAL_YOK;
 
       if(HaberZamaniMi())
       {
-         Print("PRZ: Haber saati — işlem engellendi.");
+         Print("PRZ: Haber saati — islem engellendi. (",
+               TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES), ")");
          return SIGNAL_YOK;
       }
       if(AsiriSertMumMu())
