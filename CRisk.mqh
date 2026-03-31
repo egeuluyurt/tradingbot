@@ -234,22 +234,32 @@ public:
    }
 
    //------------------------------------------------------------------
-   // Risk/Ödül Kontrolü: 1:1'den küçükse false döndür
+   // Risk/Ödül Kontrolü: TP1'e göre, minimum 1:1
+   // Her çağrıda detaylı log basar.
    //------------------------------------------------------------------
    bool RiskOdulUygunMu(double girisFiyati, double stopLoss, double takeProfit)
    {
       double slMesafe = MathAbs(girisFiyati - stopLoss);
       double tpMesafe = MathAbs(girisFiyati - takeProfit);
-      if(slMesafe <= 0) return false;
 
-      double rO = tpMesafe / slMesafe;
-      if(rO < 1.0)
+      if(slMesafe < _Point)
       {
-         Print("CRisk: R/Ö oranı yetersiz (", DoubleToString(rO, 2),
-               ") — minimum 1:1 gerekli. İşlem engellendi.");
+         Print("R/R Kontrol | Risk: 0 (SL=giris) | Sonuc: REDDEDILDI (SL sifir)");
          return false;
       }
-      return true;
+
+      double oran   = tpMesafe / slMesafe;
+      bool   gecti  = (oran >= 1.0 - _Point);   // floating point toleransi
+
+      double riskPips   = slMesafe / _Point;
+      double kazancPips = tpMesafe / _Point;
+
+      Print("R/R Kontrol | Risk: ", DoubleToString(riskPips, 1),
+            " pip | Kazanc: ", DoubleToString(kazancPips, 1),
+            " pip | Oran: ", DoubleToString(oran, 3),
+            " | Sonuc: ", (gecti ? "GECTI" : "REDDEDILDI"));
+
+      return gecti;
    }
 
    //====================================================================
@@ -257,21 +267,21 @@ public:
    //====================================================================
 
    //------------------------------------------------------------------
-   // TP Seviyeleri Hesapla (Fibonacci: CD dalgasına göre)
-   // cdAralik: C'den D'ye olan fiyat hareketi büyüklüğü
+   // TP Seviyeleri Hesapla — SL mesafesine göre (R/R garantili)
+   // TP1 = giriş ± (SL_mesafe × 1.0)  →  1:1 minimum garantisi
+   // TP2 = giriş ± (SL_mesafe × 1.5)  →  1:1.5
+   // slMesafe: MathAbs(giris - stopLoss) olarak dışarıdan geçilmeli
    //------------------------------------------------------------------
-   double TP1Hesapla(double girisfiyati, bool alis, double cdAralik)
+   double TP1Hesapla(double girisFiyati, bool alis, double slMesafe)
    {
-      // %38.2 retracement
-      if(alis) return girisfiyati + cdAralik * 0.382;
-      else     return girisfiyati - cdAralik * 0.382;
+      if(alis) return girisFiyati + slMesafe * 1.0;
+      else     return girisFiyati - slMesafe * 1.0;
    }
 
-   double TP2Hesapla(double girisFiyati, bool alis, double cdAralik)
+   double TP2Hesapla(double girisFiyati, bool alis, double slMesafe)
    {
-      // %61.8 retracement
-      if(alis) return girisFiyati + cdAralik * 0.618;
-      else     return girisFiyati - cdAralik * 0.618;
+      if(alis) return girisFiyati + slMesafe * 1.5;
+      else     return girisFiyati - slMesafe * 1.5;
    }
 
    //------------------------------------------------------------------

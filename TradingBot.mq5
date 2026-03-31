@@ -183,22 +183,19 @@ public:
                      ? SymbolInfoDouble(m_sembol, SYMBOL_ASK)
                      : SymbolInfoDouble(m_sembol, SYMBOL_BID);
 
-      // Tahmini CD aralığı (son 20 bar aralığının yarısı)
-      double yuksek = iHigh(m_sembol, PERIOD_H1,
-                            iHighest(m_sembol, PERIOD_H1, MODE_HIGH, 20, 1));
-      double asagi  = iLow (m_sembol, PERIOD_H1,
-                            iLowest (m_sembol, PERIOD_H1, MODE_LOW,  20, 1));
-      double cdAralik = (yuksek - asagi) * 0.5;
+      // SL mesafesi — TP hesabının temeli (1:1 ve 1:1.5 garantisi)
+      double slMesafe = MathAbs(giris - sl);
 
-      // TP seviyeleri
-      double tp1 = m_risk.TP1Hesapla(giris, alis, cdAralik);
-      double tp2 = m_risk.TP2Hesapla(giris, alis, cdAralik);
+      // TP seviyeleri (SL mesafesine göre — cdAralik artık kullanılmıyor)
+      double tp1 = m_risk.TP1Hesapla(giris, alis, slMesafe);
+      double tp2 = m_risk.TP2Hesapla(giris, alis, slMesafe);
 
-      Print("KERNEL: Emir hazirlanıyor | Yon=", (alis ? "AL" : "SAT"),
+      Print("KERNEL: Emir hazirlaniyor | Yon=", (alis ? "AL" : "SAT"),
             " | Giris=", DoubleToString(giris, _Digits),
             " | SL=", DoubleToString(sl, _Digits),
             " | TP1=", DoubleToString(tp1, _Digits),
-            " | cdAralik=", DoubleToString(cdAralik, _Digits));
+            " | TP2=", DoubleToString(tp2, _Digits),
+            " | SLmes=", DoubleToString(slMesafe / _Point, 1), "pip");
 
       // R/Ö kontrolü (en az 1:1)
       if(!m_risk.RiskOdulUygunMu(giris, sl, tp1))
